@@ -13,7 +13,7 @@ COPY keras_model ./keras_model
 
 RUN pip install -r requirements.txt
 
-RUN echo "App structure:" && find . -name "*.keras" -o -name "*.model" || true
+RUN echo "App structure:" && find . -name "*.h5" -o -name "*.model" || true
 
 EXPOSE 9000
 
