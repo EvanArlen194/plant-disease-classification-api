@@ -5,8 +5,6 @@ RUN apt-get update && \
     pip install --upgrade pip && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
 COPY app/ .
 
 RUN pip install -r requirements.txt
