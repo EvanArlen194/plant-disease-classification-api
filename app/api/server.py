@@ -23,7 +23,7 @@ def run_server(host: str = "0.0.0.0", port: int = None, reload: bool = False):
         Exception: If server fails to start
     """
     try:
-        port = int(os.environ.get("PORT", 9000)) if port is None else port
+        port = int(os.environ.get("PORT", 8000)) if port is None else port
         
         logger.info(f"Starting server on {host}:{port} (reload={reload})")
         uvicorn.run("api.app:app", host=host, port=port, reload=reload)
