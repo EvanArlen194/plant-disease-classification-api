@@ -527,7 +527,7 @@ class ModelService:
         try:
             if model is None:
                 logger.info(f"Loading model from: {MODEL_PATH}")
-                model = load_model(MODEL_PATH, compile=False)
+                model = tf.keras.models.load_model(MODEL_PATH, compile=False)
                 logger.info("Model loaded successfully")
                 model.summary()
                 
