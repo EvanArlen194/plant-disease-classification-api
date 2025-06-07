@@ -5,7 +5,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY app/ .
-COPY keras_model ./keras_model
+COPY best_model.keras ./keras_model/best_model.keras
 
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
@@ -13,4 +13,5 @@ RUN pip install -r requirements.txt
 RUN echo "App structure:" && find . -name "*.keras" -o -name "*.model"
 
 EXPOSE 9000
-CMD ["python", "main.py"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
+
