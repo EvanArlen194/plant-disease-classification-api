@@ -11,7 +11,7 @@ WORKDIR /app
 COPY app/ .
 
 RUN mkdir -p ./keras_model && \
-    gdown https://drive.google.com/uc?id=YOUR_FILE_ID -O ./keras_model/best_model.keras
+    gdown https://drive.google.com/file/d/1ptI0jNjt4AgmYY23nbvAhz-Kr8SrlGhC/view?usp=sharing -O ./keras_model/best_model.keras
 
 RUN pip install -r requirements.txt
 
