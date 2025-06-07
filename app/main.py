@@ -21,7 +21,7 @@ def main():
     Main function that starts the API server
     """
     try:
-        port = int(os.environ.get("PORT", 9000))
+        port = int(os.environ.get("PORT", 8000))
         
         is_dev = os.environ.get("ENVIRONMENT", "development") == "development"
         
