@@ -4,11 +4,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY app ./app
+COPY app/ .
 COPY keras_model ./keras_model
 
 RUN pip install --upgrade pip
-RUN pip install -r app/requirements.txt
+RUN pip install -r requirements.txt
 
 RUN echo "App structure:" && find . -name "*.keras" -o -name "*.model"
 
