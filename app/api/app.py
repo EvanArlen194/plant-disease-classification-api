@@ -38,8 +38,7 @@ logger = logging.getLogger(__name__)
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "keras_model")
 MODEL_PATH = os.path.join(MODEL_DIR, "best_model.keras")
 
-file_id = "YOUR_FILE_ID"
-url = f"https://drive.google.com/uc?id={file_id}"
+url = "https://drive.google.com/file/d/1ptI0jNjt4AgmYY23nbvAhz-Kr8SrlGhC/view?usp=sharing"
 
 if not os.path.exists(MODEL_PATH):
     os.makedirs(MODEL_DIR, exist_ok=True)
