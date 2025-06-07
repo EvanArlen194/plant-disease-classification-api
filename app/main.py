@@ -7,8 +7,8 @@ import logging
 import sys
 import traceback
 import os
-from api.server import run_server
-from api.app import app
+from app.api.server import run_server
+from app.api.app import app
 
 logging.basicConfig(
     level=logging.INFO,
