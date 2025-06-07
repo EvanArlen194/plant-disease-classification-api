@@ -9,6 +9,8 @@ WORKDIR /app
 
 COPY app/ .
 
+COPY keras_model ./keras_model
+
 RUN pip install -r requirements.txt
 
 RUN echo "App structure:" && find . -name "*.keras" -o -name "*.model" || true
