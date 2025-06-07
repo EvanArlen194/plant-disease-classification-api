@@ -12,5 +12,5 @@ RUN pip install -r requirements.txt
 
 RUN echo "App structure:" && find . -name "*.keras" -o -name "*.model"
 
-EXPOSE 8000
+EXPOSE 9000
 CMD ["python", "main.py"]
