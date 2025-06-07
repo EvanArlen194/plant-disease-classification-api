@@ -5,7 +5,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY app/ .
-COPY best_model.keras ./keras_model/best_model.keras
+COPY keras_model ./keras_model/best_model.keras
 
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
