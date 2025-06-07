@@ -16,6 +16,7 @@ import imghdr
 import cv2
 import numpy as np
 import tensorflow as tf
+import gdown
 
 from PIL import Image, UnidentifiedImageError
 from fastapi import FastAPI, File, UploadFile, HTTPException, status, Depends, Query
@@ -33,11 +34,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "keras_model"
-)
+
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "keras_model")
 MODEL_PATH = os.path.join(MODEL_DIR, "best_model.keras")
+
+file_id = "YOUR_FILE_ID"
+url = f"https://drive.google.com/uc?id={file_id}"
+
+if not os.path.exists(MODEL_PATH):
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    logger.info(f"Downloading model from {url} to {MODEL_PATH}...")
+    gdown.download(url, MODEL_PATH, quiet=False)
+    logger.info("Download completed!")
+    
 DEFAULT_INPUT_SIZE = (224, 224)
 
 CLASS_NAMES = [
