@@ -15,6 +15,9 @@ COPY app/ .
 
 RUN pip install -r requirements.txt
 
+ENV CUDA_VISIBLE_DEVICES=""
+ENV TF_CPP_MIN_LOG_LEVEL=2
+
 EXPOSE 9000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
