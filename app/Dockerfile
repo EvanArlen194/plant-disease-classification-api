@@ -7,6 +7,8 @@ RUN apt-get update && \
 
 WORKDIR /app
 
+RUN mkdir -p /app/keras_model
+
 RUN curl -L -o /app/keras_model/best_model.h5 https://models.evanarlen.my.id/best_model.h5
 
 COPY app/ .
