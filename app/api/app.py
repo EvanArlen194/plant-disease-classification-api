@@ -14,6 +14,7 @@ from typing import List, Tuple, Dict, Any, Optional
 import mimetypes
 import imghdr
 import cv2
+import requests
 import numpy as np
 import tensorflow as tf
 
@@ -33,11 +34,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "keras_model"
-)
+MODEL_URL = "https://models.evanarlen.my.id/models/best_model.h5"
+
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "keras_model")
+os.makedirs(MODEL_DIR, exist_ok=True)
 MODEL_PATH = os.path.join(MODEL_DIR, "best_model.h5")
+
+if not os.path.exists(MODEL_PATH):
+    logger.info(f"Downloading model from {MODEL_URL} ...")
+    response = requests.get(MODEL_URL)
+    if response.status_code == 200:
+        with open(MODEL_PATH, "wb") as f:
+            f.write(response.content)
+        logger.info("Model downloaded and saved locally.")
+    else:
+        logger.error(f"Failed to download model. Status code: {response.status_code}")
+        exit(1)
+else:
+    logger.info("Model already exists locally. Skipping download.")
 
 DEFAULT_INPUT_SIZE = (224, 224)
 
