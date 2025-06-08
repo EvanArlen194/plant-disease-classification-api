@@ -1,11 +1,13 @@
 FROM python:3.12-slim
 
 RUN apt-get update && \
-    apt-get install -y libgl1 libglib2.0-0 wget && \
+    apt-get install -y libgl1 libglib2.0-0 wget curl && \
     pip install --upgrade pip && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+RUN curl -L -o /app/keras_model/best_model.h5 https://models.evanarlen.my.id/best_model.h5
 
 COPY app/ .
 
