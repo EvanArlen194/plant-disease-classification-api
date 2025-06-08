@@ -34,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_URL = "https://models.evanarlen.my.id/models/best_model.h5"
+MODEL_URL = "https://pub-605826fad8294f5c97b8f9fef60f5b39.r2.dev"
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "keras_model")
 os.makedirs(MODEL_DIR, exist_ok=True)
