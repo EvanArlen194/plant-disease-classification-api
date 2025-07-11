@@ -36,7 +36,7 @@ MODEL_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "keras_model"
 )
-MODEL_PATH = os.path.join(MODEL_DIR, "best_model.h5")
+MODEL_PATH = os.path.join(MODEL_DIR, "api/best_model.h5")
 
 DEFAULT_INPUT_SIZE = (224, 224)
 
