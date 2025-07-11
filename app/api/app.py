@@ -877,15 +877,14 @@ async def predict(
         last_error = None
         for i, img_array in enumerate(preprocessed_images):
             try:
+                prediction_result = PredictionService.predict(img_array, i)
+                
+                confidence_str = prediction_result["confidence"]
+                confidence_value = float(confidence_str.strip('%')) / 100.0
+
                 ood_threshold = 0.7
 
-                prediction, confidence = PredictionService.predict(img_array, i)
-                prediction_result = {
-                    "prediction": prediction,
-                    "confidence": confidence,
-                }
-                
-                if prediction_result["confidence"] < ood_threshold:
+                if confidence_value < ood_threshold:
                     error_msg = (
                         "Gambar daun tanaman terdeteksi, namun penyakit tanaman ini tidak ada dalam data pelatihan model. "
                         "Silakan coba dengan gambar yang lebih jelas atau penyakit yang berbeda."
