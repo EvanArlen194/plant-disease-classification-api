@@ -10,14 +10,14 @@ import os
 import io
 import traceback
 import logging
-from typing import List, Tuple, Dict, Any, Optional
 import imghdr
 import cv2
 import numpy as np
 import tensorflow as tf
 
+from typing import List, Tuple, Dict, Any, Optional
 from PIL import Image, UnidentifiedImageError
-from fastapi import FastAPI, File, UploadFile, HTTPException, status, Depends, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -625,29 +625,28 @@ class ImageValidator:
     @staticmethod
     def validate_plant_content(img: Image.Image, strict_mode: bool = True) -> Tuple[bool, Dict[str, Any]]:
         """
-        Validate that the image contains plant/leaf content and check for OOD detection.
+        Validate that the image contains plant/leaf content
         
         Args:
-            img: PIL Image to validate.
-            strict_mode: Whether to use strict validation threshold.
-        
+            img: PIL Image to validate
+            strict_mode: Whether to use strict validation threshold
+            
         Returns:
-            Tuple of (is_valid, analysis_details).
-        
+            Tuple of (is_valid, analysis_details)
+            
         Raises:
-            ValueError: If image doesn't contain plant content or is OOD.
+            ValueError: If image doesn't contain plant content
         """
         threshold = 0.7 if strict_mode else 0.5
-
-        is_plant, details = PlantDetector.detect_plant_leaf(img, threshold)
-
+        is_plant, confidence, details = PlantDetector.detect_plant_leaf(img, threshold)
+        
         if not is_plant:
             error_msg = (
                 f"Gambar yang diunggah tampaknya tidak berisi daun tanaman. "
-                f"Silakan unggah gambar yang menunjukkan daun tanaman untuk klasifikasi penyakit."
+                f"Silakan unggah gambar yang menunjukkan daun tanaman untuk klasifikasi penyakit. "
             )
             raise ValueError(error_msg)
-
+        
         return is_plant, details
 
 class ImageProcessor:
@@ -856,68 +855,71 @@ async def predict(
     
     try:
         ImageValidator.validate_mime_type(file.content_type)
-        
         file_bytes = await file.read()
-        
         ImageValidator.validate_image_size(len(file_bytes))
-        
+
         if validate_image:
             image_format = ImageValidator.validate_image_file(file_bytes)
             logger.info(f"Image validated successfully, format: {image_format}")
-        
+
         img = ImageProcessor.read_image(file_bytes)
-        
+
         plant_analysis = None
         if validate_plant:
             is_plant, plant_analysis = ImageValidator.validate_plant_content(img, strict_plant_detection)
             logger.info(f"Plant validation passed with confidence: {plant_analysis.get('plant_confidence', 'N/A')}")
-        
+
         preprocessed_images = ImageProcessor.preprocess_image(img, input_size)
-        
+
         last_error = None
         for i, img_array in enumerate(preprocessed_images):
             try:
                 prediction_result = PredictionService.predict(img_array, i)
-                
-                confidence_str = prediction_result["confidence"]
-                confidence_value = float(confidence_str.strip('%')) / 100.0
 
-                ood_threshold = 0.7
-
-                if confidence_value < ood_threshold:
+                confidence_str = prediction_result.get("confidence", "0")
+                confidence_str = confidence_str.strip().replace("%", "")
+                try:
+                    confidence = float(confidence_str) / 100
+                except ValueError:
+                    confidence = 0
+                    
+                if confidence < 0.7:
                     error_msg = (
-                        "Gambar daun tanaman terdeteksi, namun penyakit tanaman ini tidak ada dalam data pelatihan model. "
-                        "Silakan coba dengan gambar yang lebih jelas atau penyakit yang berbeda."
+                        f"Gambar tidak dikenali atau tidak termasuk kategori penyakit tanaman yang tersedia di sistem. "
+                        f"Silakan unggah gambar daun tanaman yang sesuai untuk identifikasi penyakit tanaman."
                     )
                     raise ValueError(error_msg)
-                
+
                 if plant_analysis:
                     plant_confidence = plant_analysis.get('plant_confidence', 0)
                     prediction_result['plant_detection'] = {
                         'confidence': f"{plant_confidence * 100:.2f}%",
                         'validated': True
                     }
-                
+
                 return JSONResponse(content=prediction_result)
+            
+            except ValueError as ve:
+                raise ve
             except Exception as e:
                 last_error = str(e)
                 logger.error(f"Preprocessing method #{i+1} failed: {last_error}")
                 continue
-        
+
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Semua metode preprocessing gagal. Error terakhir: {last_error}"
         )
         
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
         logger.error(f"Unexpected error during prediction: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prediksi gagal: {str(e)}"
         )
