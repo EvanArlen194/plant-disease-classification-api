@@ -11,7 +11,6 @@ import io
 import traceback
 import logging
 from typing import List, Tuple, Dict, Any, Optional
-import mimetypes
 import imghdr
 import cv2
 import numpy as np
@@ -33,7 +32,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = os.path.join("api/keras_model", "best_model.h5")
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "keras_model"
+)
+MODEL_PATH = os.path.join(MODEL_DIR, "best_model.h5")
 
 DEFAULT_INPUT_SIZE = (224, 224)
 
@@ -626,28 +629,37 @@ class ImageValidator:
     @staticmethod
     def validate_plant_content(img: Image.Image, strict_mode: bool = True) -> Tuple[bool, Dict[str, Any]]:
         """
-        Validate that the image contains plant/leaf content
+        Validate that the image contains plant/leaf content and check for OOD detection.
         
         Args:
-            img: PIL Image to validate
-            strict_mode: Whether to use strict validation threshold
-            
+            img: PIL Image to validate.
+            strict_mode: Whether to use strict validation threshold.
+        
         Returns:
-            Tuple of (is_valid, analysis_details)
-            
+            Tuple of (is_valid, analysis_details).
+        
         Raises:
-            ValueError: If image doesn't contain plant content
+            ValueError: If image doesn't contain plant content or is OOD.
         """
         threshold = 0.7 if strict_mode else 0.5
+        ood_threshold = 0.8
+
         is_plant, confidence, details = PlantDetector.detect_plant_leaf(img, threshold)
-        
+
         if not is_plant:
             error_msg = (
                 f"Gambar yang diunggah tampaknya tidak berisi daun tanaman. "
-                f"Silakan unggah gambar yang menunjukkan daun tanaman untuk klasifikasi penyakit. "
+                f"Silakan unggah gambar yang menunjukkan daun tanaman untuk klasifikasi penyakit."
             )
             raise ValueError(error_msg)
-        
+
+        if confidence < ood_threshold:
+            error_msg = (
+                f"Gambar daun tanaman terdeteksi, namun penyakit tanaman ini tidak ada dalam data pelatihan model. "
+                f"Silakan coba dengan gambar yang lebih jelas atau penyakit yang berbeda."
+            )
+            raise ValueError(error_msg)
+
         return is_plant, details
 
 class ImageProcessor:
