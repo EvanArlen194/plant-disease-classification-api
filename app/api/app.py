@@ -638,21 +638,13 @@ class ImageValidator:
             ValueError: If image doesn't contain plant content or is OOD.
         """
         threshold = 0.7 if strict_mode else 0.5
-        ood_threshold = 0.7
 
-        is_plant, confidence, details = PlantDetector.detect_plant_leaf(img, threshold)
+        is_plant, details = PlantDetector.detect_plant_leaf(img, threshold)
 
         if not is_plant:
             error_msg = (
                 f"Gambar yang diunggah tampaknya tidak berisi daun tanaman. "
                 f"Silakan unggah gambar yang menunjukkan daun tanaman untuk klasifikasi penyakit."
-            )
-            raise ValueError(error_msg)
-
-        if confidence < ood_threshold:
-            error_msg = (
-                f"Gambar daun tanaman terdeteksi, namun penyakit tanaman ini tidak ada dalam data pelatihan model. "
-                f"Silakan coba dengan gambar yang lebih jelas atau penyakit yang berbeda."
             )
             raise ValueError(error_msg)
 
@@ -886,6 +878,15 @@ async def predict(
         for i, img_array in enumerate(preprocessed_images):
             try:
                 prediction_result = PredictionService.predict(img_array, i)
+                
+                ood_threshold = 0.7
+                
+                if prediction_result["confidence"] < ood_threshold:
+                    error_msg = (
+                        "Gambar daun tanaman terdeteksi, namun penyakit tanaman ini tidak ada dalam data pelatihan model. "
+                        "Silakan coba dengan gambar yang lebih jelas atau penyakit yang berbeda."
+                    )
+                    raise ValueError(error_msg)
                 
                 if plant_analysis:
                     plant_confidence = plant_analysis.get('plant_confidence', 0)
