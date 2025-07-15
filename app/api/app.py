@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH = os.path.join("api/keras_model", "best_model.h5")
 
-DEFAULT_INPUT_SIZE = (224, 224)
+DEFAULT_INPUT_SIZE = (128, 128)
 
 CLASS_NAMES = [
     "Apple___Apple_scab",
