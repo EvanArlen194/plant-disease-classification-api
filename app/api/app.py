@@ -16,7 +16,7 @@ import numpy as np
 import tensorflow as tf
 
 from typing import List, Tuple, Dict, Any, Optional
-from PIL import Image, ImageEnhance, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 from fastapi import FastAPI, File, UploadFile, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH = os.path.join("api/keras_model", "best_model.h5")
 
-DEFAULT_INPUT_SIZE = (128, 128)
+DEFAULT_INPUT_SIZE = (224, 224)
 
 CLASS_NAMES = [
     "Apple___Apple_scab",
@@ -458,9 +458,7 @@ class PlantDetector:
         try:
             analysis_size = (224, 224)
             img_resized = img.resize(analysis_size)
-            img_resized = ImageEnhance.Brightness(img_resized).enhance(1.2)
-            img_resized = ImageEnhance.Contrast(img_resized).enhance(1.3)
-
+            
             color_features = PlantDetector.analyze_color_features(img_resized)
             
             texture_features = PlantDetector.analyze_texture_features(img_resized)
@@ -481,10 +479,10 @@ class PlantDetector:
             )
             
             if color_features['avg_saturation'] < 0.1 and color_features['green_percentage'] < 0.05:
-                plant_confidence *= 0.6
+                plant_confidence *= 0.3
             
             if color_features['green_percentage'] < 0.02:
-                plant_confidence *= 0.7
+                plant_confidence *= 0.5
             
             is_plant = plant_confidence >= threshold
             
@@ -924,4 +922,5 @@ async def predict(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prediksi gagal: {str(e)}"
-        )
+)
+        
