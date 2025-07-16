@@ -21,6 +21,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
@@ -31,7 +32,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = os.path.join("api/keras_model", "best_model.h5")
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "keras_model"
+)
+MODEL_PATH = os.path.join(MODEL_DIR, "best_model.h5")
 
 DEFAULT_INPUT_SIZE = (224, 224)
 
@@ -636,7 +641,7 @@ class ImageValidator:
         Raises:
             ValueError: If image doesn't contain plant content
         """
-        threshold = 0.6 if strict_mode else 0.5
+        threshold = 0.7 if strict_mode else 0.5
         is_plant, confidence, details = PlantDetector.detect_plant_leaf(img, threshold)
         
         if not is_plant:
@@ -650,18 +655,18 @@ class ImageValidator:
 
 class ImageProcessor:
     """Service for image processing operations"""
-
+    
     @staticmethod
     def read_image(file_bytes: bytes) -> Image.Image:
         """
         Read image file bytes and convert to PIL Image.
-
+        
         Args:
             file_bytes: Bytes of the image file
-
+            
         Returns:
             PIL Image object in RGB format
-
+        
         Raises:
             ValueError: If image cannot be read or processed
         """
@@ -673,118 +678,34 @@ class ImageProcessor:
         except Exception as e:
             logger.error(f"Error reading image: {str(e)}")
             raise ValueError(f"Error reading image: {str(e)}")
-
+    
     @staticmethod
     def preprocess_image(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
         """
         Preprocess image for model prediction using multiple methods.
-        Handles camera images with proper resizing and preprocessing.
-
+        
         Args:
             img: PIL Image to preprocess
-            target_size: Target size (width, height) for resizing
-
+            target_size: Target size (height, width) for resizing
+            
         Returns:
             List of preprocessed image arrays using different methods
-
+        
         Raises:
             ValueError: If image cannot be preprocessed
         """
         try:
-            if img is None:
-                raise ValueError("Input image is None")
-
-            if not isinstance(target_size, tuple) or len(target_size) != 2:
-                raise ValueError("target_size must be a tuple of (width, height)")
-
-            logger.info(f"Original image size: {img.size}, mode: {img.mode}")
-
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-                logger.info("Converted image mode to RGB")
-
-            img_resized = img.resize(target_size, Image.LANCZOS)
-            logger.info(f"Resized image from {img.size} to {target_size}")
-
-            img_array = image.img_to_array(img_resized)
-            logger.info(f"Image array shape: {img_array.shape}")
-
-            expected_shape = (target_size[1], target_size[0], 3)  # (height, width, 3)
-            if img_array.shape != expected_shape:
-                raise ValueError(f"Expected shape {expected_shape}, got {img_array.shape}")
-
+            img = img.resize(target_size)
+            img_array = image.img_to_array(img)
             img_array = np.expand_dims(img_array, axis=0)
-
-            normalized = img_array.astype(np.float32) / 255.0
-
-            mobilenet_preprocessed = preprocess_input(img_array.copy().astype(np.float32))
-
-            logger.info("Image preprocessing completed successfully")
-            logger.info(f"Normalized range: [{normalized.min():.3f}, {normalized.max():.3f}]")
-            logger.info(f"MobileNet preprocessed range: [{mobilenet_preprocessed.min():.3f}, {mobilenet_preprocessed.max():.3f}]")
-
+            
+            normalized = img_array / 255.0
+            mobilenet_preprocessed = preprocess_input(img_array.copy())
+            
             return [normalized, mobilenet_preprocessed]
-
         except Exception as e:
             logger.error(f"Error preprocessing image: {str(e)}")
             raise ValueError(f"Error preprocessing image: {str(e)}")
-
-    @staticmethod
-    def preprocess_with_aspect_ratio_preservation(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
-        """
-        Preprocessing yang mempertahankan aspect ratio dengan padding.
-        Berguna jika model sensitif terhadap distorsi gambar.
-
-        Args:
-            img: PIL Image to preprocess
-            target_size: Target size (width, height) for resizing
-
-        Returns:
-            List of preprocessed image arrays
-        """
-        try:
-            # Convert ke RGB jika perlu
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-
-            # Hitung aspect ratio
-            original_width, original_height = img.size
-            target_width, target_height = target_size
-
-            # Hitung scale factor untuk mempertahankan aspect ratio
-            scale_width = target_width / original_width
-            scale_height = target_height / original_height
-            scale = min(scale_width, scale_height)
-
-            # Resize dengan mempertahankan aspect ratio
-            new_width = int(original_width * scale)
-            new_height = int(original_height * scale)
-
-            img_resized = img.resize((new_width, new_height), Image.LANCZOS)
-
-            # Buat background hitam dengan target size
-            background = Image.new('RGB', target_size, (0, 0, 0))
-
-            # Paste gambar di tengah
-            paste_x = (target_width - new_width) // 2
-            paste_y = (target_height - new_height) // 2
-            background.paste(img_resized, (paste_x, paste_y))
-
-            # Convert ke array dan preprocess
-            img_array = image.img_to_array(background)
-            img_array = np.expand_dims(img_array, axis=0)
-
-            normalized = img_array.astype(np.float32) / 255.0
-            mobilenet_preprocessed = preprocess_input(img_array.copy().astype(np.float32))
-
-            logger.info(f"Aspect ratio preserved: {original_width}x{original_height} -> "
-                        f"{new_width}x{new_height} (padded to {target_size})")
-
-            return [normalized, mobilenet_preprocessed]
-
-        except Exception as e:
-            logger.error(f"Error preprocessing with aspect ratio preservation: {str(e)}")
-            raise ValueError(f"Error preprocessing with aspect ratio preservation: {str(e)}")
 
 class PredictionService:
     """Service for prediction operations"""
@@ -886,6 +807,14 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}")
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    """Handle validation errors"""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=jsonable_encoder({"detail": exc.errors(), "message": "Validation error"}),
+    )
+
 @app.get("/")
 def root() -> Dict[str, str]:
     """
@@ -958,7 +887,7 @@ async def predict(
                 except ValueError:
                     confidence = 0
                     
-                if confidence < 0.6:
+                if confidence < 0.7:
                     error_msg = (
                         f"Gambar tidak dikenali atau tidak termasuk kategori penyakit tanaman yang tersedia di sistem. "
                         f"Silakan unggah gambar daun tanaman yang sesuai untuk identifikasi penyakit tanaman."
@@ -997,5 +926,4 @@ async def predict(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prediksi gagal: {str(e)}"
-)
-        
+        )
