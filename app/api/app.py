@@ -456,7 +456,7 @@ class PlantDetector:
             Tuple of (is_plant_leaf, confidence_score, analysis_details)
         """
         try:
-            analysis_size = (224, 224)
+            analysis_size = (128, 128)
             img_resized = img.resize(analysis_size)
             
             color_features = PlantDetector.analyze_color_features(img_resized)
@@ -637,7 +637,7 @@ class ImageValidator:
         Raises:
             ValueError: If image doesn't contain plant content
         """
-        threshold = 0.7 if strict_mode else 0.5
+        threshold = 0.6 if strict_mode else 0.5
         is_plant, confidence, details = PlantDetector.detect_plant_leaf(img, threshold)
         
         if not is_plant:
