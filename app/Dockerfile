@@ -7,6 +7,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 
+RUN mkdir -p /app/api/keras_model
+
+RUN curl -L -o /app/api/keras_model/best_model.h5 https://models.evanarlen.my.id/best_model.h5
+
 COPY app/ .
 
 RUN pip install -r requirements.txt
