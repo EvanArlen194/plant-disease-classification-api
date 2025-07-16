@@ -676,13 +676,16 @@ class ImageProcessor:
             raise ValueError(f"Error reading image: {str(e)}")
     
     @staticmethod
-    def preprocess_image(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
+    def preprocess_image(img: Image.Image, target_size: Tuple[int, int], 
+                        auto_crop: bool = True, crop_method: str = 'contour') -> List[np.ndarray]:
         """
-        Preprocess image for model prediction using multiple methods.
+        Preprocess image for model prediction using multiple methods with optional auto-cropping.
         
         Args:
             img: PIL Image to preprocess
             target_size: Target size (height, width) for resizing
+            auto_crop: Whether to automatically crop the leaf from background
+            crop_method: Method for cropping ('contour', 'grabcut', 'threshold')
             
         Returns:
             List of preprocessed image arrays using different methods
@@ -691,6 +694,9 @@ class ImageProcessor:
             ValueError: If image cannot be preprocessed
         """
         try:
+            if auto_crop:
+                img = ImageProcessor._auto_crop_leaf(img, method=crop_method)
+            
             img = img.resize(target_size)
             img_array = image.img_to_array(img)
             img_array = np.expand_dims(img_array, axis=0)
@@ -702,6 +708,140 @@ class ImageProcessor:
         except Exception as e:
             logger.error(f"Error preprocessing image: {str(e)}")
             raise ValueError(f"Error preprocessing image: {str(e)}")
+
+    @staticmethod
+    def _auto_crop_leaf(img: Image.Image, method: str = 'contour') -> Image.Image:
+        """
+        Automatically crop leaf from background using various methods.
+        
+        Args:
+            img: PIL Image to crop
+            method: Cropping method ('contour', 'grabcut', 'threshold')
+            
+        Returns:
+            Cropped PIL Image
+        """
+        try:
+            img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+            
+            if method == 'contour':
+                cropped = ImageProcessor._crop_by_contour(img_cv)
+            elif method == 'grabcut':
+                cropped = ImageProcessor._crop_by_grabcut(img_cv)
+            elif method == 'threshold':
+                cropped = ImageProcessor._crop_by_threshold(img_cv)
+            else:
+                logger.warning(f"Unknown crop method: {method}, using contour")
+                cropped = ImageProcessor._crop_by_contour(img_cv)
+            
+            cropped_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+            return Image.fromarray(cropped_rgb)
+            
+        except Exception as e:
+            logger.warning(f"Auto-crop failed: {str(e)}, returning original image")
+            return img
+
+    @staticmethod
+    def _crop_by_contour(img: np.ndarray) -> np.ndarray:
+        """
+        Crop leaf using contour detection method.
+        """
+        blurred = cv2.GaussianBlur(img, (5, 5), 0)
+        
+        hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+        
+        lower_green = np.array([35, 40, 40])
+        upper_green = np.array([85, 255, 255])
+        mask = cv2.inRange(hsv, lower_green, upper_green)
+        
+        kernel = np.ones((3, 3), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            
+            padding = 20
+            x = max(0, x - padding)
+            y = max(0, y - padding)
+            w = min(img.shape[1] - x, w + 2 * padding)
+            h = min(img.shape[0] - y, h + 2 * padding)
+            
+            return img[y:y+h, x:x+w]
+        
+        return img
+
+    @staticmethod
+    def _crop_by_grabcut(img: np.ndarray) -> np.ndarray:
+        """
+        Crop leaf using GrabCut algorithm.
+        """
+        height, width = img.shape[:2]
+        
+        rect = (width//4, height//4, width//2, height//2)
+        
+        mask = np.zeros((height, width), np.uint8)
+        bgd_model = np.zeros((1, 65), np.float64)
+        fgd_model = np.zeros((1, 65), np.float64)
+        
+        try:
+            cv2.grabCut(img, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
+            
+            mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
+            
+            coords = np.column_stack(np.where(mask2 > 0))
+            if len(coords) > 0:
+                y_min, x_min = coords.min(axis=0)
+                y_max, x_max = coords.max(axis=0)
+                
+                padding = 10
+                y_min = max(0, y_min - padding)
+                x_min = max(0, x_min - padding)
+                y_max = min(height, y_max + padding)
+                x_max = min(width, x_max + padding)
+                
+                return img[y_min:y_max, x_min:x_max]
+        except:
+            pass
+        
+        return img
+
+    @staticmethod
+    def _crop_by_threshold(img: np.ndarray) -> np.ndarray:
+        """
+        Crop leaf using adaptive threshold method.
+        """
+        gray = cv2.cvtColor(img, img.COLOR_BGR2GRAY)
+
+        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
+                                     cv2.THRESH_BINARY, 11, 2)
+        
+        thresh = cv2.bitwise_not(thresh)
+        
+        kernel = np.ones((3, 3), np.uint8)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+        
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+        
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            
+            padding = 15
+            x = max(0, x - padding)
+            y = max(0, y - padding)
+            w = min(img.shape[1] - x, w + 2 * padding)
+            h = min(img.shape[0] - y, h + 2 * padding)
+            
+            return img[y:y+h, x:x+w]
+        
+        return img
 
 class PredictionService:
     """Service for prediction operations"""
@@ -829,7 +969,9 @@ async def predict(
     file: UploadFile = File(...),
     validate_image: bool = Query(True, description="Whether to perform comprehensive image validation"),
     validate_plant: bool = Query(True, description="Whether to validate that image contains plant leaves"),
-    strict_plant_detection: bool = Query(True, description="Whether to use strict plant detection threshold")
+    strict_plant_detection: bool = Query(True, description="Whether to use strict plant detection threshold"),
+    auto_crop: bool = Query(True, description="Whether to automatically crop leaf from background"),
+    crop_method: str = Query("contour", description="Cropping method: 'contour', 'grabcut', or 'threshold'")
 ) -> JSONResponse:
     """
     Predicts plant diseases from the uploaded image.
@@ -839,6 +981,8 @@ async def predict(
         validate_image: Whether to perform comprehensive image validation.
         validate_plant: Whether to validate that the image contains plant leaves.
         strict_plant_detection: Whether to use a strict threshold for plant detection.
+        auto_crop: Whether to automatically crop leaf from background.
+        crop_method: Method for cropping ('contour', 'grabcut', 'threshold').
 
     Returns:
         JSONResponse with the prediction results.
@@ -869,7 +1013,23 @@ async def predict(
             is_plant, plant_analysis = ImageValidator.validate_plant_content(img, strict_plant_detection)
             logger.info(f"Plant validation passed with confidence: {plant_analysis.get('plant_confidence', 'N/A')}")
 
-        preprocessed_images = ImageProcessor.preprocess_image(img, input_size)
+        valid_crop_methods = ['contour', 'grabcut', 'threshold']
+        if crop_method not in valid_crop_methods:
+            logger.warning(f"Invalid crop method: {crop_method}, using 'contour'")
+            crop_method = 'contour'
+
+        preprocessed_images = ImageProcessor.preprocess_image(
+            img, 
+            input_size, 
+            auto_crop=auto_crop, 
+            crop_method=crop_method
+        )
+
+        crop_info = {
+            'auto_crop_enabled': auto_crop,
+            'crop_method': crop_method if auto_crop else 'disabled'
+        }
+        logger.info(f"Image preprocessing completed with crop settings: {crop_info}")
 
         last_error = None
         for i, img_array in enumerate(preprocessed_images):
@@ -896,6 +1056,8 @@ async def predict(
                         'confidence': f"{plant_confidence * 100:.2f}%",
                         'validated': True
                     }
+
+                prediction_result['preprocessing_info'] = crop_info
 
                 return JSONResponse(content=prediction_result)
             
