@@ -637,7 +637,7 @@ class ImageValidator:
         Raises:
             ValueError: If image doesn't contain plant content
         """
-        threshold = 0.7 if strict_mode else 0.5
+        threshold = 0.6 if strict_mode else 0.5
         is_plant, confidence, details = PlantDetector.detect_plant_leaf(img, threshold)
         
         if not is_plant:
