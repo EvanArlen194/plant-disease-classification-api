@@ -739,8 +739,8 @@ class ImageProcessor:
         logger.error(f"Error preprocessing image: {str(e)}")
         raise ValueError(f"Error preprocessing image: {str(e)}")
 
-
-def preprocess_camera_image(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
+    @staticmethod
+    def preprocess_camera_image(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
     """
     Specialized preprocessing for camera-captured images.
     Includes additional processing for camera-specific issues.
@@ -785,8 +785,8 @@ def preprocess_camera_image(img: Image.Image, target_size: Tuple[int, int]) -> L
         logger.error(f"Error preprocessing camera image: {str(e)}")
         raise ValueError(f"Error preprocessing camera image: {str(e)}")
 
-
-def preprocess_with_aspect_ratio_preservation(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
+    @staticmethod
+    def preprocess_with_aspect_ratio_preservation(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
     """
     Preprocessing yang mempertahankan aspect ratio dengan padding.
     Berguna jika model sensitif terhadap distorsi gambar.
@@ -840,42 +840,6 @@ def preprocess_with_aspect_ratio_preservation(img: Image.Image, target_size: Tup
     except Exception as e:
         logger.error(f"Error preprocessing with aspect ratio preservation: {str(e)}")
         raise ValueError(f"Error preprocessing with aspect ratio preservation: {str(e)}")
-
-
-# Utility function untuk debugging
-def debug_preprocessing(img: Image.Image, target_size: Tuple[int, int]) -> dict:
-    """
-    Debug function untuk melihat statistik preprocessing.
-    """
-    try:
-        preprocessed = preprocess_image(img, target_size)
-        
-        normalized = preprocessed[0]
-        mobilenet_preprocessed = preprocessed[1]
-        
-        debug_info = {
-            'original_size': img.size,
-            'original_mode': img.mode,
-            'target_size': target_size,
-            'final_shape': normalized.shape,
-            'normalized_stats': {
-                'min': float(normalized.min()),
-                'max': float(normalized.max()),
-                'mean': float(normalized.mean()),
-                'std': float(normalized.std())
-            },
-            'mobilenet_stats': {
-                'min': float(mobilenet_preprocessed.min()),
-                'max': float(mobilenet_preprocessed.max()),
-                'mean': float(mobilenet_preprocessed.mean()),
-                'std': float(mobilenet_preprocessed.std())
-            }
-        }
-        
-        return debug_info
-        
-    except Exception as e:
-        return {'error': str(e)}
 
 class PredictionService:
     """Service for prediction operations"""
