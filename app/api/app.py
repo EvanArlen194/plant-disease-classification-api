@@ -967,7 +967,7 @@ async def predict(
                 except ValueError:
                     confidence = 0
                     
-                if confidence < 0.7:
+                if confidence < 0.6:
                     error_msg = (
                         f"Gambar tidak dikenali atau tidak termasuk kategori penyakit tanaman yang tersedia di sistem. "
                         f"Silakan unggah gambar daun tanaman yang sesuai untuk identifikasi penyakit tanaman."
