@@ -21,7 +21,6 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from fastapi.encoders import jsonable_encoder
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
@@ -886,14 +885,6 @@ async def startup_event():
         logger.info("API started successfully")
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}")
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc):
-    """Handle validation errors"""
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=jsonable_encoder({"detail": exc.errors(), "message": "Validation error"}),
-    )
 
 @app.get("/")
 def root() -> Dict[str, str]:
