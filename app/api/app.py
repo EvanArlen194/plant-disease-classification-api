@@ -677,7 +677,8 @@ class ImageProcessor:
     
     @staticmethod
     def preprocess_image(img: Image.Image, target_size: Tuple[int, int], 
-                        auto_crop: bool = True, crop_method: str = 'contour') -> List[np.ndarray]:
+                        auto_crop: bool = True, crop_method: str = 'contour',
+                        enhance_for_camera: bool = True) -> List[np.ndarray]:
         """
         Preprocess image for model prediction using multiple methods with optional auto-cropping.
         
@@ -686,6 +687,7 @@ class ImageProcessor:
             target_size: Target size (height, width) for resizing
             auto_crop: Whether to automatically crop the leaf from background
             crop_method: Method for cropping ('contour', 'grabcut', 'threshold')
+            enhance_for_camera: Whether to apply camera-specific enhancements
             
         Returns:
             List of preprocessed image arrays using different methods
@@ -694,9 +696,16 @@ class ImageProcessor:
             ValueError: If image cannot be preprocessed
         """
         try:
-            if auto_crop:
-                img = ImageProcessor._auto_crop_leaf(img, method=crop_method)
+            # Enhanced preprocessing untuk kamera
+            if enhance_for_camera:
+                img = ImageProcessor._enhance_camera_image(img)
             
+            # Auto-crop jika diminta
+            if auto_crop:
+                img = ImageProcessor._auto_crop_leaf(img, method=crop_method, 
+                                                  camera_optimized=enhance_for_camera)
+            
+            # Proses yang sudah ada sebelumnya
             img = img.resize(target_size)
             img_array = image.img_to_array(img)
             img_array = np.expand_dims(img_array, axis=0)
@@ -710,30 +719,100 @@ class ImageProcessor:
             raise ValueError(f"Error preprocessing image: {str(e)}")
 
     @staticmethod
-    def _auto_crop_leaf(img: Image.Image, method: str = 'contour') -> Image.Image:
+    def _enhance_camera_image(img: Image.Image) -> Image.Image:
+        """
+        Apply camera-specific enhancements to improve cropping accuracy.
+        """
+        try:
+            # Konversi ke OpenCV
+            img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+            
+            # 1. Noise reduction
+            img_cv = cv2.bilateralFilter(img_cv, 9, 75, 75)
+            
+            # 2. Contrast enhancement menggunakan CLAHE
+            lab = cv2.cvtColor(img_cv, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            l = clahe.apply(l)
+            enhanced = cv2.merge([l, a, b])
+            img_cv = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+            
+            # 3. Sharpening untuk mengurangi blur
+            kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+            img_cv = cv2.filter2D(img_cv, -1, kernel)
+            
+            # 4. Gamma correction untuk memperbaiki lighting
+            gamma = ImageProcessor._estimate_gamma(img_cv)
+            img_cv = ImageProcessor._adjust_gamma(img_cv, gamma)
+            
+            # Konversi kembali ke PIL
+            img_rgb = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+            return Image.fromarray(img_rgb)
+            
+        except Exception as e:
+            logger.warning(f"Camera enhancement failed: {str(e)}, returning original")
+            return img
+
+    @staticmethod
+    def _estimate_gamma(img: np.ndarray) -> float:
+        """
+        Estimate optimal gamma value for lighting correction.
+        """
+        # Hitung histogram
+        hist = cv2.calcHist([img], [0], None, [256], [0, 256])
+        
+        # Cari median brightness
+        total_pixels = img.shape[0] * img.shape[1]
+        cumsum = np.cumsum(hist)
+        median_idx = np.where(cumsum >= total_pixels / 2)[0][0]
+        
+        # Estimate gamma berdasarkan median
+        if median_idx < 85:  # Terlalu gelap
+            return 0.7
+        elif median_idx > 170:  # Terlalu terang
+            return 1.3
+        else:
+            return 1.0
+
+    @staticmethod
+    def _adjust_gamma(img: np.ndarray, gamma: float) -> np.ndarray:
+        """
+        Apply gamma correction to image.
+        """
+        inv_gamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in range(256)]).astype("uint8")
+        return cv2.LUT(img, table)
+
+    @staticmethod
+    def _auto_crop_leaf(img: Image.Image, method: str = 'contour', 
+                       camera_optimized: bool = False) -> Image.Image:
         """
         Automatically crop leaf from background using various methods.
         
         Args:
             img: PIL Image to crop
             method: Cropping method ('contour', 'grabcut', 'threshold')
+            camera_optimized: Whether to use camera-optimized parameters
             
         Returns:
             Cropped PIL Image
         """
         try:
+            # Konversi ke OpenCV format
             img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
             
             if method == 'contour':
-                cropped = ImageProcessor._crop_by_contour(img_cv)
+                cropped = ImageProcessor._crop_by_contour(img_cv, camera_optimized)
             elif method == 'grabcut':
-                cropped = ImageProcessor._crop_by_grabcut(img_cv)
+                cropped = ImageProcessor._crop_by_grabcut(img_cv, camera_optimized)
             elif method == 'threshold':
-                cropped = ImageProcessor._crop_by_threshold(img_cv)
+                cropped = ImageProcessor._crop_by_threshold(img_cv, camera_optimized)
             else:
                 logger.warning(f"Unknown crop method: {method}, using contour")
-                cropped = ImageProcessor._crop_by_contour(img_cv)
+                cropped = ImageProcessor._crop_by_contour(img_cv, camera_optimized)
             
+            # Konversi kembali ke PIL
             cropped_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
             return Image.fromarray(cropped_rgb)
             
@@ -742,63 +821,106 @@ class ImageProcessor:
             return img
 
     @staticmethod
-    def _crop_by_contour(img: np.ndarray) -> np.ndarray:
+    def _crop_by_contour(img: np.ndarray, camera_optimized: bool = False) -> np.ndarray:
         """
-        Crop leaf using contour detection method.
+        Crop leaf using contour detection method with camera optimization.
         """
-        blurred = cv2.GaussianBlur(img, (5, 5), 0)
+        # Blur untuk mengurangi noise (lebih agresif untuk kamera)
+        blur_kernel = (7, 7) if camera_optimized else (5, 5)
+        blurred = cv2.GaussianBlur(img, blur_kernel, 0)
         
+        # Konversi ke HSV
         hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
         
-        lower_green = np.array([35, 40, 40])
-        upper_green = np.array([85, 255, 255])
+        # Mask untuk warna hijau (range lebih luas untuk kamera)
+        if camera_optimized:
+            # Range yang lebih luas untuk lighting yang beragam
+            lower_green = np.array([25, 30, 30])
+            upper_green = np.array([95, 255, 255])
+        else:
+            lower_green = np.array([35, 40, 40])
+            upper_green = np.array([85, 255, 255])
+        
         mask = cv2.inRange(hsv, lower_green, upper_green)
         
-        kernel = np.ones((3, 3), np.uint8)
+        # Operasi morfologi (lebih agresif untuk kamera)
+        kernel_size = (5, 5) if camera_optimized else (3, 3)
+        kernel = np.ones(kernel_size, np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         
+        # Tambahan: Fill holes untuk kamera
+        if camera_optimized:
+            contours_temp, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours_temp:
+                cv2.fillPoly(mask, contours_temp, 255)
+        
+        # Temukan kontur terbesar
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
+            # Filter kontur berdasarkan area minimum
+            min_area = 1000 if camera_optimized else 500
+            valid_contours = [c for c in contours if cv2.contourArea(c) > min_area]
             
-            x, y, w, h = cv2.boundingRect(largest_contour)
-            
-            padding = 20
-            x = max(0, x - padding)
-            y = max(0, y - padding)
-            w = min(img.shape[1] - x, w + 2 * padding)
-            h = min(img.shape[0] - y, h + 2 * padding)
-            
-            return img[y:y+h, x:x+w]
+            if valid_contours:
+                # Ambil kontur terbesar
+                largest_contour = max(valid_contours, key=cv2.contourArea)
+                
+                # Buat bounding box
+                x, y, w, h = cv2.boundingRect(largest_contour)
+                
+                # Padding lebih besar untuk kamera
+                padding = 30 if camera_optimized else 20
+                x = max(0, x - padding)
+                y = max(0, y - padding)
+                w = min(img.shape[1] - x, w + 2 * padding)
+                h = min(img.shape[0] - y, h + 2 * padding)
+                
+                return img[y:y+h, x:x+w]
         
         return img
 
     @staticmethod
-    def _crop_by_grabcut(img: np.ndarray) -> np.ndarray:
+    def _crop_by_grabcut(img: np.ndarray, camera_optimized: bool = False) -> np.ndarray:
         """
-        Crop leaf using GrabCut algorithm.
+        Crop leaf using GrabCut algorithm with camera optimization.
         """
         height, width = img.shape[:2]
         
-        rect = (width//4, height//4, width//2, height//2)
+        # Rectangle lebih konservatif untuk kamera
+        if camera_optimized:
+            rect = (width//6, height//6, width//1.5, height//1.5)
+        else:
+            rect = (width//4, height//4, width//2, height//2)
         
+        # Inisialisasi mask
         mask = np.zeros((height, width), np.uint8)
         bgd_model = np.zeros((1, 65), np.float64)
         fgd_model = np.zeros((1, 65), np.float64)
         
         try:
-            cv2.grabCut(img, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
+            # Iterasi lebih banyak untuk kamera
+            iterations = 8 if camera_optimized else 5
+            cv2.grabCut(img, mask, rect, bgd_model, fgd_model, iterations, cv2.GC_INIT_WITH_RECT)
             
+            # Buat mask final
             mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
             
+            # Operasi morfologi untuk membersihkan mask
+            if camera_optimized:
+                kernel = np.ones((3, 3), np.uint8)
+                mask2 = cv2.morphologyEx(mask2, cv2.MORPH_CLOSE, kernel)
+                mask2 = cv2.morphologyEx(mask2, cv2.MORPH_OPEN, kernel)
+            
+            # Temukan bounding box dari mask
             coords = np.column_stack(np.where(mask2 > 0))
             if len(coords) > 0:
                 y_min, x_min = coords.min(axis=0)
                 y_max, x_max = coords.max(axis=0)
                 
-                padding = 10
+                # Padding lebih besar untuk kamera
+                padding = 20 if camera_optimized else 10
                 y_min = max(0, y_min - padding)
                 x_min = max(0, x_min - padding)
                 y_max = min(height, y_max + padding)
@@ -811,35 +933,61 @@ class ImageProcessor:
         return img
 
     @staticmethod
-    def _crop_by_threshold(img: np.ndarray) -> np.ndarray:
+    def _crop_by_threshold(img: np.ndarray, camera_optimized: bool = False) -> np.ndarray:
         """
-        Crop leaf using adaptive threshold method.
+        Crop leaf using adaptive threshold method with camera optimization.
         """
-        gray = cv2.cvtColor(img, img.COLOR_BGR2GRAY)
-
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
-                                     cv2.THRESH_BINARY, 11, 2)
+        # Konversi ke grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
+        # Pre-processing untuk kamera
+        if camera_optimized:
+            # Gaussian blur untuk mengurangi noise
+            gray = cv2.GaussianBlur(gray, (5, 5), 0)
+            
+            # Histogram equalization
+            gray = cv2.equalizeHist(gray)
+        
+        # Adaptive threshold dengan parameter berbeda untuk kamera
+        if camera_optimized:
+            thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                         cv2.THRESH_BINARY, 15, 3)
+        else:
+            thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
+                                         cv2.THRESH_BINARY, 11, 2)
+        
+        # Invert threshold
         thresh = cv2.bitwise_not(thresh)
         
-        kernel = np.ones((3, 3), np.uint8)
+        # Operasi morfologi (lebih agresif untuk kamera)
+        kernel_size = (5, 5) if camera_optimized else (3, 3)
+        kernel = np.ones(kernel_size, np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
         
+        # Temukan kontur
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
-        
-            x, y, w, h = cv2.boundingRect(largest_contour)
+            # Filter berdasarkan area
+            min_area = 1500 if camera_optimized else 800
+            valid_contours = [c for c in contours if cv2.contourArea(c) > min_area]
             
-            padding = 15
-            x = max(0, x - padding)
-            y = max(0, y - padding)
-            w = min(img.shape[1] - x, w + 2 * padding)
-            h = min(img.shape[0] - y, h + 2 * padding)
-            
-            return img[y:y+h, x:x+w]
+            if valid_contours:
+                # Ambil kontur terbesar
+                largest_contour = max(valid_contours, key=cv2.contourArea)
+                
+                # Buat bounding box
+                x, y, w, h = cv2.boundingRect(largest_contour)
+                
+                # Padding lebih besar untuk kamera
+                padding = 25 if camera_optimized else 15
+                x = max(0, x - padding)
+                y = max(0, y - padding)
+                w = min(img.shape[1] - x, w + 2 * padding)
+                h = min(img.shape[0] - y, h + 2 * padding)
+                
+                return img[y:y+h, x:x+w]
         
         return img
 
@@ -1018,11 +1166,22 @@ async def predict(
             logger.warning(f"Invalid crop method: {crop_method}, using 'contour'")
             crop_method = 'contour'
 
+        enhance_for_camera = len(file_bytes) > 500000
+        
         preprocessed_images = ImageProcessor.preprocess_image(
             img, 
             input_size, 
-            auto_crop=auto_crop, 
-            crop_method=crop_method
+            auto_crop=True, 
+            crop_method='contour',
+            enhance_for_camera=True
+        )
+        
+        preprocessed_images = ImageProcessor.preprocess_image(
+            img, 
+            input_size, 
+            auto_crop=True, 
+            crop_method='contour',
+            enhance_for_camera=False
         )
 
         crop_info = {
