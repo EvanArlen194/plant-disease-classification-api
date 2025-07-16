@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH = os.path.join("api/keras_model", "best_model.h5")
 
-DEFAULT_INPUT_SIZE = (128, 128)
+DEFAULT_INPUT_SIZE = (224, 224)
 
 CLASS_NAMES = [
     "Apple___Apple_scab",
@@ -456,7 +456,7 @@ class PlantDetector:
             Tuple of (is_plant_leaf, confidence_score, analysis_details)
         """
         try:
-            analysis_size = (128, 128)
+            analysis_size = (224, 224)
             img_resized = img.resize(analysis_size)
             
             color_features = PlantDetector.analyze_color_features(img_resized)
