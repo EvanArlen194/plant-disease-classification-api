@@ -638,7 +638,7 @@ class ImageValidator:
             ValueError: If image doesn't contain plant content
         """
         threshold = 0.7 if strict_mode else 0.5
-        is_plant, confidence, details = PlantDetector.detect_plant_leaf(img, threshold)
+        is_plant, details = PlantDetector.detect_plant_leaf(img, threshold)
         
         if not is_plant:
             error_msg = (
@@ -650,19 +650,16 @@ class ImageValidator:
         return is_plant, details
 
 class ImageProcessor:
-    """Service for image processing operations"""
-    
+    """Service for image processing operations."""
+
     @staticmethod
     def read_image(file_bytes: bytes) -> Image.Image:
         """
-        Read image file bytes and convert to PIL Image.
-        
+        Read image file bytes and convert to PIL Image in RGB format.
         Args:
             file_bytes: Bytes of the image file
-            
         Returns:
             PIL Image object in RGB format
-        
         Raises:
             ValueError: If image cannot be read or processed
         """
@@ -674,30 +671,57 @@ class ImageProcessor:
         except Exception as e:
             logger.error(f"Error reading image: {str(e)}")
             raise ValueError(f"Error reading image: {str(e)}")
-    
+
     @staticmethod
-    def preprocess_image(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
+    def auto_crop(img: Image.Image) -> Image.Image:
+        """
+        Automatically crop main object (example: green plant area).
+        Returns cropped image if object detected; otherwise, original image.
+        """
+        np_img = np.array(img)
+        
+        hsv = cv2.cvtColor(np_img, cv2.COLOR_RGB2HSV)
+
+        lower = np.array([25, 40, 40])
+        upper = np.array([85, 255, 255])
+
+        mask = cv2.inRange(hsv, lower, upper)
+
+        coords = cv2.findNonZero(mask)
+
+        if coords is not None:
+            x, y, w, h = cv2.boundingRect(coords)
+            cropped = np_img[y:y+h, x:x+w]
+            logger.info("Auto-cropping image to main green area.")
+            return Image.fromarray(cropped)
+        else:
+            logger.warning("No dominant green area detected; returning original image.")
+            return img
+
+    @staticmethod
+    def preprocess_image(img: Image.Image, target_size: tuple[int, int], auto_crop: bool = False) -> list[np.ndarray]:
         """
         Preprocess image for model prediction using multiple methods.
-        
         Args:
             img: PIL Image to preprocess
             target_size: Target size (height, width) for resizing
-            
+            auto_crop: Whether to automatically crop main object before resize
         Returns:
-            List of preprocessed image arrays using different methods
-        
+            List of preprocessed image arrays [normalized, mobilenet_preprocessed]
         Raises:
             ValueError: If image cannot be preprocessed
         """
         try:
+            if auto_crop:
+                img = ImageProcessor.auto_crop(img)
+
             img = img.resize(target_size)
             img_array = image.img_to_array(img)
             img_array = np.expand_dims(img_array, axis=0)
-            
+
             normalized = img_array / 255.0
             mobilenet_preprocessed = preprocess_input(img_array.copy())
-            
+
             return [normalized, mobilenet_preprocessed]
         except Exception as e:
             logger.error(f"Error preprocessing image: {str(e)}")
