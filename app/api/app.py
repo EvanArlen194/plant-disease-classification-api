@@ -731,46 +731,61 @@ class ImageProcessor:
             raise ValueError(f"Error preprocessing image: {str(e)}")
 
     @staticmethod
-    def preprocess_camera_image(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
+    def preprocess_with_aspect_ratio_preservation(img: Image.Image, target_size: Tuple[int, int]) -> List[np.ndarray]:
         """
-        Specialized preprocessing for camera-captured images.
-        Includes additional processing for camera-specific issues.
+        Preprocessing yang mempertahankan aspect ratio dengan padding.
+        Berguna jika model sensitif terhadap distorsi gambar.
 
         Args:
-            img: PIL Image from camera
+            img: PIL Image to preprocess
             target_size: Target size (width, height) for resizing
 
         Returns:
             List of preprocessed image arrays
         """
         try:
-            img = ImageOps.exif_transpose(img)
+            # Convert ke RGB jika perlu
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
 
-            enhancer = ImageEnhance.Contrast(img)
-            img = enhancer.enhance(1.1)
+            # Hitung aspect ratio
+            original_width, original_height = img.size
+            target_width, target_height = target_size
 
-            enhancer = ImageEnhance.Sharpness(img)
-            img = enhancer.enhance(1.1)
+            # Hitung scale factor untuk mempertahankan aspect ratio
+            scale_width = target_width / original_width
+            scale_height = target_height / original_height
+            scale = min(scale_width, scale_height)
 
-            img_array = np.array(img)
-            mean_brightness = np.mean(img_array)
+            # Resize dengan mempertahankan aspect ratio
+            new_width = int(original_width * scale)
+            new_height = int(original_height * scale)
 
-            if mean_brightness < 80:
-                enhancer = ImageEnhance.Brightness(img)
-                img = enhancer.enhance(1.3)
-                logger.info("Applied brightness enhancement (image too dark)")
-            elif mean_brightness > 200:
-                enhancer = ImageEnhance.Brightness(img)
-                img = enhancer.enhance(0.8)
-                logger.info("Applied brightness reduction (image too bright)")
+            img_resized = img.resize((new_width, new_height), Image.LANCZOS)
 
-            return ImageProcessor.preprocess_image(img, target_size)
+            # Buat background hitam dengan target size
+            background = Image.new('RGB', target_size, (0, 0, 0))
+
+            # Paste gambar di tengah
+            paste_x = (target_width - new_width) // 2
+            paste_y = (target_height - new_height) // 2
+            background.paste(img_resized, (paste_x, paste_y))
+
+            # Convert ke array dan preprocess
+            img_array = image.img_to_array(background)
+            img_array = np.expand_dims(img_array, axis=0)
+
+            normalized = img_array.astype(np.float32) / 255.0
+            mobilenet_preprocessed = preprocess_input(img_array.copy().astype(np.float32))
+
+            logger.info(f"Aspect ratio preserved: {original_width}x{original_height} -> "
+                        f"{new_width}x{new_height} (padded to {target_size})")
+
+            return [normalized, mobilenet_preprocessed]
 
         except Exception as e:
-            logger.error(f"Error preprocessing camera image: {str(e)}")
-            raise ValueError(f"Error preprocessing camera image: {str(e)}")
-        
-        
+            logger.error(f"Error preprocessing with aspect ratio preservation: {str(e)}")
+            raise ValueError(f"Error preprocessing with aspect ratio preservation: {str(e)}")
 
 class PredictionService:
     """Service for prediction operations"""
