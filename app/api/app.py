@@ -33,7 +33,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = os.path.join("api/keras_model", "best_model_mobilenet.h5")
+MODEL_PATH = os.path.join("api/keras_model", "best_model.h5")
 
 DEFAULT_INPUT_SIZE = (224, 224)
 
