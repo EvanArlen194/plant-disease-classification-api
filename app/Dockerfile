@@ -9,7 +9,7 @@ WORKDIR /app
 
 RUN mkdir -p /app/api/keras_model
 
-RUN curl -L -o /app/api/keras_model/best_model.h5 https://models.evanarlen.my.id/best_model_mobilenet.h5
+RUN curl -L -o /app/api/keras_model/best_model_mobilenet.h5 https://models.evanarlen.my.id/best_model_mobilenet.h5
 
 COPY app/ .
 
