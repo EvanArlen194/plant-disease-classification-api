@@ -35,16 +35,10 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH = os.path.join("api/keras_model", "best_model_mobilenet.h5")
 
-f = h5py.File(MODEL_PATH, mode="r+")
-model_config_string = f.attrs.get("model_config")
-if model_config_string.find('"groups": 1,') != -1:
-    model_config_string = model_config_string.replace('"groups": 1,', '')
-    f.attrs.modify('model_config', model_config_string)
-    f.flush()
-    model_config_string = f.attrs.get("model_config")
-    assert model_config_string.find('"groups": 1,') == -1
-
-f.close()
+model = load_model(
+    MODEL_PATH,
+    custom_objects={"DepthwiseConv2D": tf.keras.layers.DepthwiseConv2D}
+)
 
 DEFAULT_INPUT_SIZE = (224, 224)
 
