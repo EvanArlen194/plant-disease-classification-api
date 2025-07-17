@@ -28,7 +28,7 @@ opt_einsum==3.4.0
 optree==0.15.0
 packaging==25.0
 pillow==11.2.1
-protobuf==5.29.4
+protobuf==3.20.3
 pydantic==2.11.3
 pydantic_core==2.33.1
 Pygments==2.19.1
