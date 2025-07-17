@@ -35,11 +35,6 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH = os.path.join("api/keras_model", "best_model_mobilenet.h5")
 
-model = load_model(
-    MODEL_PATH,
-    custom_objects={"DepthwiseConv2D": tf.keras.layers.DepthwiseConv2D}
-)
-
 DEFAULT_INPUT_SIZE = (224, 224)
 
 CLASS_NAMES = [
